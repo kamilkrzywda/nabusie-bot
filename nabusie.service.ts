@@ -98,7 +98,8 @@ export class NabusieService {
                         return;
                     }
                 } else if (res && [403, 409].includes(res.status)) {
-                    console.log(`Job ${job.id} - .`, await (res.json() as any)?.error ?? '');
+                    const response = await res.json() as any;
+                    console.log(`Job ${job.id} -`, response.error ?? '');
                     return;
                 } else if (res && !res.ok) {
                     console.error(`response not ok, returning: ${res.status} ${res.statusText} ${await res.text()}`);
