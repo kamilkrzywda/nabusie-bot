@@ -53,25 +53,23 @@ export class NabusieService {
             console.error('State is not fetched yet. Cannot get vehicle trips.');
             return [];
         }
-        const trips = this.state.trips.filter(trip => trip.vehicleId === vehicle.id);
-        return trips;
+        return this.state.trips.filter(trip => trip.vehicleId === vehicle.id) || [];
     }
 
-    ifVehicleAvailable = (job: JobType): boolean => {
+    isVehicleAvailableForJob = (vehicle: VehicleState, job: JobType): boolean => {
         if (!this.state) {
             console.error('State is not fetched yet. Cannot check vehicle availability.');
             return false;
         }
-        for (const vehicle of this.state.vehicles) {
-            if (
-                vehicle.type.capacity >= job.demand
-                && (
-                    (vehicle.status === 'IDLE')
-                    || this.getVehicleTrips(vehicle)[0]?.jobId === null
-                )
-            ) {
-                return true;
-            }
+        const trips = this.getVehicleTrips(vehicle);
+        if (
+            vehicle.type.capacity >= job.demand
+            && (
+                (vehicle.status === 'IDLE') ||
+                (trips.length > 0 && trips[0]?.jobId === null)
+            )
+        ) {
+            return true;
         }
         return false;
     }
@@ -86,12 +84,21 @@ export class NabusieService {
             if (!vehicle.type) {
                 return console.error(`Vehicle ${vehicle.id} has no type. Skipping.`);
             }
-            if (this.ifVehicleAvailable(job)) {
+            if (this.isVehicleAvailableForJob(vehicle, job)) {
                 const res = await this.takeJob(job.id, vehicle.id);
                 if (res && res.ok) {
-                    const response = await res.text() as any;
-                    if (response.includes('warning')) {
-                        console.log('Warning - skipping job due to warning in response.');
+                    const response = await res.json() as any;
+                    if (
+                        response.warning &&
+                        (
+                            response.warning.marginMs < 0 ||
+                            response.warning.lateMs > 0 ||
+                            response.warning.tight
+                        )
+                    ) {
+                        console.log('Warning - we would be late for this job. Skipping.');
+                    } else if (response.warning) {
+                        console.log(`Warning - skipping job due to warning in response.`, response.warning);
                     } else {
                         console.log(`Successfully took job ${job.originName}-${job.destName} with vehicle ${vehicle.type.name} - ${vehicle.id}`);
                         this.state.vehicles = this.state.vehicles.filter(v => v.id !== vehicle.id);
